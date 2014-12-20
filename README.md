@@ -4,6 +4,7 @@ SciTE-mruby is a SciTE based text editor with mruby scripting extension.
 
 [SciTE](http://www.scintilla.org/SciTE.html) is a cross-platform text editor written by Neil Hodgson.
 
+![](./tools/scite/doc/scite-gtk.png)
 
 ## Features
 
