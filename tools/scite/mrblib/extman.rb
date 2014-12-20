@@ -330,7 +330,7 @@ end
 
 SciTE.load_scripts
 
-SciTE.define_command "Run as mruby script", "*", "Shift+Ctrl+R" do
+SciTE.define_command "Run as mruby script", "*", "Alt+Ctrl+R" do
   if Editor.lexer_language != "ruby"
     SciTE.menu_command IDM_LANGUAGE + 23
   end

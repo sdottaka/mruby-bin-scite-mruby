@@ -10,7 +10,7 @@ SciTE-mruby is a SciTE based text editor with mruby scripting extension.
 - All [SciTE](http://www.scintilla.org/SciTE.html) features :)
 - Extendable by a mruby script code like a Lua script
 - Embedded [ExtMan](http://lua-users.org/wiki/SciteExtMan) rewritten in mruby
-- Support to run mruby script without saving as a file (Shift+Ctrl+R key) 
+- Support to run mruby script without saving as a file (Alt+Ctrl+R key) 
 - (**Not Yet**)Visual mruby script debugger
 
 ## Download 
