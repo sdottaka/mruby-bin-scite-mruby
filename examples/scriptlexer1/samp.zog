@@ -1,0 +1,6 @@
+#  -*- coding: utf-8 -*-
+proc clip(int a)
+« Clip into the positive zone »
+if (a > 0) a
+0
+end

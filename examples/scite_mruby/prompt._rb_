@@ -1,0 +1,42 @@
+SciTE.command('Last Command|do_command_list|Ctrl+Alt+P')
+
+PROMPT = '> '
+HISTORY_LEN = 4
+puts 'SciTE/mruby'
+trace PROMPT
+
+if Kernel.respond_to?(:load)
+  alias :orig_load :load unless respond_to?(:orig_load)
+
+  def load(file = nil)
+    orig_load file ? file : Props['FilePath']
+  end
+end
+
+def edit(file)
+  SciTE.open(file)
+end
+
+$commands = []
+
+SciTE.onOutputLine do |line|
+  if line[0..PROMPT.length-1] == PROMPT then
+    line = line[PROMPT.length..-1]
+  end	
+  $commands.unshift line
+  $commands.pop if $commands.size > HISTORY_LEN
+  begin
+    p eval(line)
+  rescue => e
+    p e
+  end
+  trace PROMPT
+  true
+end
+
+def do_command_list()
+  SciTE.userListShow($commands) do  |cmd|
+    Output.appendText(cmd)
+    Output.gotoPos(Output.length)
+  end
+end

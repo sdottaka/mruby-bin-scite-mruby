@@ -1,0 +1,26 @@
+# based on select_string.lua
+# this extends the usual double-click behaviour; any group of chars with the same style 
+# (such as a string or a comment) will be extended. It is called immediately after the
+# default behaviour, which selects words. If a word was selected, then the cursor will
+# be at the end, and we ignore this case.
+
+def expand_same_style()
+	pos = Editor.currentPos
+	style = Editor.styleAt[pos]
+	if style == 0 || !Editor.focus then return end
+	p = pos
+	while p > -1 && Editor.styleAt[p] == style do
+		p = p - 1
+	end
+	pstart = p+1
+	if pstart == pos then return end # we're at the end!
+	p = pos
+	sz = Editor.length-1
+	while p < sz && Editor.styleAt[p] == style do
+		p = p + 1
+	end
+	Editor.setSel(pstart,p)
+end
+
+SciTE.onDoubleClick do expand_same_style; false end
+	

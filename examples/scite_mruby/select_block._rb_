@@ -1,0 +1,32 @@
+# this script is based on select_block.lua
+# this experimental script makes it easy to select blocks with a single click.
+# The usual behaviour is to select the whole line, and if that line happens to be a fold line
+# then select the rest of that block.
+
+def line_selected
+#	if not scite_GetProp('fold') then return end
+	s1 = Editor.selectionStart
+	s2 = Editor.selectionEnd
+	if s2 > s1 then # non-trivial selection
+		line = Editor.lineFromPosition(s1)
+		if Editor.positionFromLine(line) > s1 then
+			return # because selection didn't start at begining of line
+		end 
+		if s2 == Editor.positionFromLine(line+1) then # whole line selected!
+			lev = Editor.foldLevel[line]
+			if lev & SciTE::SC_FOLDLEVELHEADERFLAG then # a fold line
+				lastl = Editor.getLastChild(line,-1)
+				s2 = Editor.positionFromLine(lastl+1)
+				# hack: a fold line beginning with a '{' is not where we want to start...
+				if Editor.getLine(line) =~ /^\s*{/ then
+					s1 = Editor.positionFromLine(line-1)
+				end
+				Editor.anchor = s2
+				Editor.currentPos = s1
+			end
+		end
+	end
+end
+
+SciTE.onUpdateUI do line_selected; false end
+
