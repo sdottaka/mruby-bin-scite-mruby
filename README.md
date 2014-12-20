@@ -4,7 +4,7 @@ SciTE-mruby is a SciTE based text editor with mruby scripting extension.
 
 [SciTE](http://www.scintilla.org/SciTE.html) is a cross-platform text editor written by Neil Hodgson.
 
-![](./tools/scite/doc/scite-gtk.png)
+![](https://raw.githubusercontent.com/sdottaka/mruby-bin-scite-mruby/master/tools/scite/doc/scite-gtk.png)
 
 ## Features
 
@@ -69,7 +69,7 @@ rake
 1. Click [Options] -> [Open mruby startup script]
 2. Add the code below and save it
 
-![](./tools/scite/doc/example_eval.png)
+![](https://raw.githubusercontent.com/sdottaka/mruby-bin-scite-mruby/master/tools/scite/doc/example_eval.png)
 
 ```ruby
 SciTE.define_command "Eval selected text as mruby script", "*", "Ctrl+9" do 
@@ -83,7 +83,7 @@ end
 
 ### Calltips
 
-![](./tools/scite/doc/example_calltips.png)
+![](https://raw.githubusercontent.com/sdottaka/mruby-bin-scite-mruby/master/tools/scite/doc/example_calltips.png)
 
 
 ```ruby
@@ -101,7 +101,7 @@ end
 ```
 
 ### User list
-![](./tools/scite/doc/example_userlist.png)
+![](https://raw.githubusercontent.com/sdottaka/mruby-bin-scite-mruby/master/tools/scite/doc/example_userlist.png)
 
 ```ruby
 SciTE.define_command "Insert ABC", "*", "Ctrl+8" do 
