@@ -4,6 +4,8 @@
 # This makefile assumes GCC 4.x is used and changes will be needed to use other compilers.
 # GNU make does not like \r\n line endings so should be saved to CVS in binary form.
 
+include ../../../../../host/lib/libmruby.flags.mak
+
 .SUFFIXES: .cxx .o .h .a .c
 ifdef CLANG
 # Can choose aspect to sanitize: address and undefined can simply change SANITIZE but for
@@ -70,14 +72,23 @@ LUA_OBJS = LuaExtension.o $(LUA_CORE_OBJS) $(LUA_LIB_OBJS)
 
 vpath %.c ../lua/src ../lua/src/lib
 
-INCLUDEDIRS=-I ../../scintilla/include -I ../src -I../lua/include
-
-.c.o:
-	$(CC) $(CFLAGS) $(INCLUDEDIRS) -DLUA_USE_POSIX $(CXXTFLAGS) -c $< -o $@
+INCLUDEDIRS+=-I../lua/include
 
 else
 CXXTFLAGS+=-DNO_LUA
 endif
+
+ifndef NO_MRUBY
+MRUBY_OBJS = mrubyExtension.o ../../../../../host/lib/libmruby.a
+
+INCLUDEDIRS+=-I../../../../../../include
+
+else
+CXXTFLAGS+=-DNO_MRUBY
+endif
+
+.c.o:
+	$(CC) $(CFLAGS) $(INCLUDEDIRS) -DLUA_USE_POSIX $(CXXTFLAGS) -c $< -o $@
 
 CXXTFLAGS:=$(CXXTFLAGS)
 
@@ -113,8 +124,8 @@ $(PROG): SciTEGTK.o GUIGTK.o Widget.o \
 FilePath.o SciTEBase.o FileWorker.o Cookie.o Credits.o SciTEBuffers.o SciTEIO.o StringList.o \
 Exporters.o  MatchMarker.o StringHelpers.o \
 PropSetFile.o MultiplexExtension.o DirectorExtension.o SciTEProps.o StyleDefinition.o StyleWriter.o Utf8_16.o \
-	JobQueue.o GTKMutex.o IFaceTable.o $(COMPLIB) $(LUA_OBJS)
-	$(CXX) `$(CONFIGTHREADS)` -rdynamic -Wl,--as-needed -Wl,--version-script lua.vers -DGTK $^ -o $@ $(CONFIGLIB) $(LIBDL) -lm -lstdc++
+	JobQueue.o GTKMutex.o IFaceTable.o $(COMPLIB) $(LUA_OBJS) $(MRUBY_OBJS)
+	$(CXX) `$(CONFIGTHREADS)` -rdynamic -Wl,--as-needed -Wl,--version-script lua.vers -DGTK $^ -o $@ $(CONFIGLIB) $(LIBDL) -lm -lstdc++ $(MRUBY_LDFLAGS) $(MRUBY_LIBS)
 
 # Automatically generate header dependencies with "make deps"
 include deps.mak

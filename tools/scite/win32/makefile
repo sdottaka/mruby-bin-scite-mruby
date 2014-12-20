@@ -4,13 +4,15 @@
 # This makefile assumes the mingw32 version of GCC 4.x is used and changes will
 # be needed to use other compilers.
 
+include ../../../../../host/lib/libmruby.flags.mak
+
 .SUFFIXES: .cxx .properties
 WINDRES ?= windres
 
 ifeq ($(OS),Windows_NT)
 	CC = gcc
-	DEL = $(if $(wildcard $(dir $(SHELL))rm.exe), $(dir $(SHELL))rm.exe -f, del)
-	COPY = xcopy /Y
+	DEL = $(if $(wildcard $(dir $(SHELL))rm.exe), rm -f, del)
+	COPY = $(if $(wildcard $(dir $(SHELL))rm.exe), cp -a, xcopy /Y)
 	VER = cmd /c ver
 	# Discover Windows version by running 'VER' command and parsing output
 	# For Windows 2000 looks like:Microsoft Windows 2000 [Version 5.00.2195]
@@ -60,10 +62,17 @@ else
 LUA_DEFINES = -DNO_LUA
 endif
 
-INCLUDEDIRS=-I ../../scintilla/include -I ../../scintilla/win32 -I ../src $(LUA_INCLUDES)
+ifndef NO_MRUBY
+MRUBY_OBJS = mrubyExtension.o ../../../../../host/lib/libmruby.a
+MRUBY_INCLUDES = -I ../../../../../../include
+else
+MRUBY_DEFINES = -DNO_MRUBY
+endif
+
+INCLUDEDIRS=-I ../../scintilla/include -I ../../scintilla/win32 -I ../src $(LUA_INCLUDES) $(MRUBY_INCLUDES)
 RCINCLUDEDIRS=--include-dir ../../scintilla/win32 --include-dir ../src
 
-CBASEFLAGS = -W -Wall $(INCLUDEDIRS) $(LUA_DEFINES) $(WIDEFLAGS) $(VERSION_DEFINES)
+CBASEFLAGS = -W -Wall $(INCLUDEDIRS) $(LUA_DEFINES) $(MRUBY_DEFINES) $(WIDEFLAGS) $(VERSION_DEFINES)
 
 ifdef DEBUG
 CFLAGS=-DDEBUG -g $(CBASEFLAGS)
@@ -74,7 +83,7 @@ endif
 
 CXXFLAGS = $(CFLAGS) -pedantic -fno-rtti
 
-LDFLAGS=-mwindows -lmsimg32 -lcomctl32 -limm32 -lole32 -luuid $(UXLIB) $(LUA_LDFLAGS)
+LDFLAGS=-mwindows -lmsimg32 -lcomctl32 -limm32 -lole32 -luuid $(UXLIB) $(LUA_LDFLAGS) $(MRUBY_LDFLAGS) $(MRUBY_LIBS)
 
 .cxx.o:
 	$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -109,7 +118,7 @@ SHAREDOBJS=\
 	Utf8_16.o \
 	WinMutex.o
 
-OTHER_OBJS = $(SHAREDOBJS) $(LUA_OBJS) SciTERes.o SciTEWin.o
+OTHER_OBJS = $(SHAREDOBJS) $(LUA_OBJS) $(MRUBY_OBJS) SciTERes.o SciTEWin.o
 
 OBJS = Credits.o $(OTHER_OBJS)
 
@@ -162,26 +171,14 @@ deps:
 embedded: ../src/Embedded.properties
 
 ../bin/Scintilla.dll:	../../scintilla/bin/Scintilla.dll
-ifeq ($(OS),Windows_NT)
-	$(COPY) $(subst /,\, $< $(@D))
-else
 	$(COPY) $^ $(@D)
-endif
 
 ../bin/SciLexer.dll:	../../scintilla/bin/SciLexer.dll
-ifeq ($(OS),Windows_NT)
-	$(COPY) $(subst /,\, $< $(@D))
-else
 	$(COPY) $^ $(@D)
-endif
 
 # Using '/' rather than '\' as that allows make to match the next rule
 ../bin/%.properties:	../src/%.properties
-ifeq ($(OS),Windows_NT)
-	$(COPY) $(subst /,\, $< $(@D))
-else
 	$(COPY) $^ $(@D)
-endif
 
 # Normally distributed rather than built as may not have grep on all machines
 # Copy all non-comment lines from all the properties files into one combined file
@@ -236,7 +233,8 @@ OBJSSTATIC = \
 	WordList.o \
 	XPM.o \
 	Lexers.a \
-	$(LUA_OBJS)
+	$(LUA_OBJS) \
+	$(MRUBY_OBJS)
 
 $(PROGSTATIC): $(OBJSSTATIC)
 	$(CXX) $(STRIPFLAG) -static -Xlinker --subsystem -Xlinker windows -o $@ $^ $(LDFLAGS)

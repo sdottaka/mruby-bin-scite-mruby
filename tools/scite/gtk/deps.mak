@@ -17,7 +17,7 @@ SciTEGTK.o: SciTEGTK.cxx \
  ../src/StringList.h ../src/StringHelpers.h ../src/FilePath.h \
  ../src/StyleDefinition.h ../src/PropSetFile.h ../src/Extender.h \
  ../src/MultiplexExtension.h ../src/Extender.h DirectorExtension.h \
- ../src/LuaExtension.h ../src/SciTE.h ../src/Mutex.h ../src/JobQueue.h \
+ ../src/LuaExtension.h ../src/mrubyExtension.h ../src/SciTE.h ../src/Mutex.h ../src/JobQueue.h \
  pixmapsGNOME.h SciIcon.h Widget.h ../src/Cookie.h ../src/Worker.h \
  ../src/MatchMarker.h ../src/SciTEBase.h ../src/SciTEKeys.h \
  ../src/StripDefinition.h
@@ -56,6 +56,10 @@ LuaExtension.o: ../src/LuaExtension.cxx \
  ../src/LuaExtension.h ../src/IFaceTable.h ../src/SciTEKeys.h \
  ../lua/include/lua.h ../lua/include/luaconf.h ../lua/include/lualib.h \
  ../lua/include/lua.h ../lua/include/lauxlib.h
+mrubyExtension.o: ../src/mrubyExtension.cxx \
+ ../../scintilla/include/Scintilla.h ../src/GUI.h ../src/SString.h \
+ ../src/FilePath.h ../src/StyleWriter.h ../src/Extender.h \
+ ../src/mrubyExtension.h ../src/IFaceTable.h ../src/SciTEKeys.h
 MatchMarker.o: ../src/MatchMarker.cxx ../../scintilla/include/Scintilla.h \
  ../src/GUI.h ../src/MatchMarker.h
 MultiplexExtension.o: ../src/MultiplexExtension.cxx \

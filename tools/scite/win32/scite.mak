@@ -8,6 +8,8 @@
 # For a build without Lua, define NO_LUA on the command line.
 # The main makefile uses mingw32 gcc and may be more current than this file.
 
+!INCLUDE ../../../../../host/lib/libmruby.flags.mak
+
 .SUFFIXES: .cxx .properties
 
 DIR_BIN=..\bin
@@ -23,9 +25,14 @@ LD=link
 CXXFLAGS=-Zi -TP -MP -W4 -EHsc -Zc:forScope -Zc:wchar_t -D_CRT_SECURE_NO_DEPRECATE=1 -D_CRT_NONSTDC_NO_DEPRECATE $(WIDEFLAGS)
 CCFLAGS=-TC -MP -W3 -wd4244 -D_CRT_SECURE_NO_DEPRECATE=1 -DLUA_USER_H=\"scite_lua_win.h\"
 
+!IFDEF USE_MSVCRT
+CXXDEBUG=-Od -MDd -DDEBUG
+CXXNDEBUG=-O1 -Oi -MD -DNDEBUG -GL
+!ELSE
 CXXDEBUG=-Od -MTd -DDEBUG
 # Don't use "-MD", even with "-D_STATIC_CPPLIB" because it links to MSVCR71.DLL
 CXXNDEBUG=-O1 -Oi -MT -DNDEBUG -GL
+!ENDIF
 NAME=-Fo
 LDFLAGS=-OPT:REF -LTCG -DEBUG
 LDDEBUG=
@@ -187,6 +194,16 @@ INCLUDEDIRS = $(INCLUDEDIRS) -I../lua/include
 CXXFLAGS=$(CXXFLAGS) -DNO_LUA
 !ENDIF
 
+!IFNDEF NO_MRUBY
+MRUBY_OBJS = mrubyExtension.obj
+
+OBJS = $(OBJS) $(MRUBY_OBJS)
+OBJSSTATIC = $(OBJSSTATIC) $(MRUBY_OBJS)
+INCLUDEDIRS = $(INCLUDEDIRS) -I../../../../../../include
+!ELSE
+CXXFLAGS=$(CXXFLAGS) -DNO_MRUBY
+!ENDIF
+
 CXXFLAGS=$(CXXFLAGS) $(INCLUDEDIRS)
 CCFLAGS=$(CCFLAGS) $(INCLUDEDIRS)
 
@@ -228,10 +245,10 @@ Sc1Res.res: SciTERes.rc ..\src\SciTE.h SciTE.exe.manifest
 	$(RC) $(INCLUDEDIRS) -dSTATIC_BUILD -fo$@ SciTERes.rc
 
 $(PROG): $(OBJS) SciTERes.res
-	$(LD) $(LDFLAGS) -OUT:$@ $** $(LIBS)
+	$(LD) $(LDFLAGS) $(MRUBY_LDFLAGS) -OUT:$@ $** $(LIBS) $(MRUBY_LIBS)
 
 $(PROGSTATIC): $(OBJSSTATIC) $(LEXLIB) Sc1Res.res
-	$(LD) $(LDFLAGS) -OUT:$@ $** $(LIBS)
+	$(LD) $(LDFLAGS) $(MRUBY_LDFLAGS) -OUT:$@ $** $(LIBS) $(MRUBY_LIBS)
 
 # Define how to build all the objects and what they depend on
 # Some source files are compiled into more than one object because of different conditional compilation
@@ -303,7 +320,8 @@ SciTEWin.obj: \
 	../src/MultiplexExtension.h \
 	../src/Extender.h \
 	DirectorExtension.h \
-	../src/LuaExtension.h
+	../src/LuaExtension.h \
+	../src/mrubyExtension.h
 Sc1.obj: \
 	SciTEWin.cxx \
 	SciTEWin.h \
@@ -333,7 +351,8 @@ Sc1.obj: \
 	../src/MultiplexExtension.h \
 	../src/Extender.h \
 	DirectorExtension.h \
-	../src/LuaExtension.h
+	../src/LuaExtension.h \
+	../src/mrubyExtension.h
 SciTEWinBar.obj: \
 	SciTEWinBar.cxx \
 	SciTEWin.h \
@@ -665,4 +684,25 @@ IFaceTable.obj: \
 
 # Lua core dependencies are omitted; if the Lua source code
 # is modified, a make clean may be necessary.
+!ENDIF
+
+!IFNDEF NO_MRUBY
+mrubyExtension.obj: \
+	../src/mrubyExtension.cxx \
+	../../scintilla/include/Scintilla.h \
+	../src/GUI.h \
+	../src/SString.h \
+	../src/FilePath.h \
+	../src/StyleWriter.h \
+	../src/Extender.h \
+	../src/mrubyExtension.h \
+	../src/IFaceTable.h \
+	../src/SciTEKeys.h
+
+!IFDEF NO_LUA
+IFaceTable.obj: \
+	../src/IFaceTable.cxx \
+	../src/IFaceTable.h
+!ENDIF
+
 !ENDIF

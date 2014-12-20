@@ -54,6 +54,10 @@
 #include "LuaExtension.h"
 #endif
 
+#ifndef NO_MRUBY
+#include "mrubyExtension.h"
+#endif
+
 #endif
 
 #include "SciTE.h"
@@ -4004,6 +4008,7 @@ void SciTEGTK::CreateMenu() {
 	            {"/Options/Open _Global Options File", "", menuSig, IDM_OPENGLOBALPROPERTIES, 0},
 	            {"/Options/Open A_bbreviations File", "", menuSig, IDM_OPENABBREVPROPERTIES, 0},
 	            {"/Options/Open Lua Startup Scr_ipt", "", menuSig, IDM_OPENLUAEXTERNALFILE, 0},
+	            {"/Options/Open mrub_y Startup Script", "", menuSig, IDM_OPENMRUBYEXTERNALFILE, 0},
 	            {"/Options/sep4", NULL, NULL, 0, "<Separator>"},
 	            {"/Options/_Edit Properties", "", 0, 0, "<Branch>"},
 	        };
@@ -5386,6 +5391,9 @@ int main(int argc, char *argv[]) {
 
 #ifndef NO_LUA
 	multiExtender.RegisterExtension(LuaExtension::Instance());
+#endif
+#ifndef NO_MRUBY
+	multiExtender.RegisterExtension(mrubyExtension::Instance());
 #endif
 #ifndef NO_FILER
 	multiExtender.RegisterExtension(DirectorExtension::Instance());

@@ -1536,6 +1536,13 @@ void SciTEBase::OpenProperties(int propsFile) {
 			}
 			break;
 		}
+	case IDM_OPENMRUBYEXTERNALFILE: {
+			GUI::gui_string extmruby = GUI::StringFromUTF8(props.GetExpanded("ext.mruby.startup.script").c_str());
+			if (extmruby.length()) {
+				Open(extmruby.c_str(), ofQuiet);
+			}
+			break;
+		}
 	case IDM_OPENDIRECTORYPROPERTIES: {
 			propfile = GetDirectoryPropertiesFileName();
 			bool alreadyExists = propfile.Exists();

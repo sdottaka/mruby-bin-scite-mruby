@@ -1571,7 +1571,7 @@ bool LuaExtension::RemoveBuffer(int index) {
 bool LuaExtension::OnExecute(const char *s) {
 	bool handled = false;
 
-	if (luaState || InitGlobalScope(false)) {
+	if ((luaState || InitGlobalScope(false)) && strncmp(s, "mruby:", sizeof("mruby:")-1) != 0) {
 		// May as well use Lua's pattern matcher to parse the command.
 		// Scintilla's RESearch was the other option.
 		int stackBase = lua_gettop(luaState);

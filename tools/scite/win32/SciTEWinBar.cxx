@@ -1057,4 +1057,11 @@ void SciTEWin::Creation() {
 #else
 		DestroyMenuItem(menuOptions,IDM_OPENLUAEXTERNALFILE);
 #endif
+
+#ifndef NO_MRUBY
+		if (props.GetExpanded("ext.mruby.startup.script").length() == 0)
+			DestroyMenuItem(menuOptions,IDM_OPENMRUBYEXTERNALFILE);
+#else
+		DestroyMenuItem(menuOptions,IDM_OPENMRUBYEXTERNALFILE);
+#endif
 }

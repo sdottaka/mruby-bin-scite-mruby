@@ -158,6 +158,7 @@ BEGIN
 	MENUITEM "Open &Global Options File",		IDM_OPENGLOBALPROPERTIES
 	MENUITEM "Open A&bbreviations File",		IDM_OPENABBREVPROPERTIES
 	MENUITEM "Open Lua Startup Scr&ipt", 		IDM_OPENLUAEXTERNALFILE
+	MENUITEM "Open mrub&y Startup Script", 		IDM_OPENMRUBYEXTERNALFILE
 	MENUITEM SEPARATOR
 END // used: abcghlmoprstux
 

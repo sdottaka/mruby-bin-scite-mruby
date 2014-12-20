@@ -20,6 +20,8 @@
 #include "LuaExtension.h"
 #endif
 
+#ifndef NO_MRUBY
+#include "mrubyExtension.h"
 #endif
 
 #ifdef STATIC_BUILD
@@ -2148,6 +2150,10 @@ int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
 
 #ifndef NO_LUA
 	multiExtender.RegisterExtension(LuaExtension::Instance());
+#endif
+
+#ifndef NO_MRUBY
+	multiExtender.RegisterExtension(mrubyExtension::Instance());
 #endif
 
 #ifndef NO_FILER

@@ -5,11 +5,7 @@
 # be needed to use other compilers.
 
 .SUFFIXES: .cxx
-ifeq ($(OS),Windows_NT)
-DEL = del /q
-else
-DEL = rm -f
-endif
+DEL = $(if $(wildcard $(dir $(SHELL))rm.exe), rm -f, del)
 RANLIB ?= ranlib
 WINDRES ?= windres
 

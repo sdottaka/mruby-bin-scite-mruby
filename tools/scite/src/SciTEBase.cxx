@@ -3539,6 +3539,11 @@ void SciTEBase::MenuCommand(int cmdID, int source) {
 		WindowSetFocus(wEditor);
 		break;
 
+	case IDM_OPENMRUBYEXTERNALFILE:
+		OpenProperties(IDM_OPENMRUBYEXTERNALFILE);
+		WindowSetFocus(wEditor);
+		break;
+
 	case IDM_OPENDIRECTORYPROPERTIES:
 		OpenProperties(IDM_OPENDIRECTORYPROPERTIES);
 		WindowSetFocus(wEditor);
