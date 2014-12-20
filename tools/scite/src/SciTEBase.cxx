@@ -2976,6 +2976,8 @@ void SciTEBase::MenuCommand(int cmdID, int source) {
 			SetEol();
 			UpdateStatusBar(true);
 			WindowSetFocus(wEditor);
+			if (extender)
+				extender->OnOpen("");
 		}
 		break;
 	case IDM_OPEN:
