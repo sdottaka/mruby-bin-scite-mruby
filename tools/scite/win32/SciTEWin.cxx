@@ -24,11 +24,9 @@
 #include "mrubyExtension.h"
 #endif
 
-#ifdef STATIC_BUILD
-const GUI::gui_char appName[] = GUI_TEXT("Sc1");
-#else
-const GUI::gui_char appName[] = GUI_TEXT("SciTE");
 #endif
+
+const GUI::gui_char appName[] = GUI_TEXT("SciTE-mruby");
 
 static GUI::gui_string GetErrorMessage(DWORD nRet) {
 	LPWSTR lpMsgBuf = NULL;
