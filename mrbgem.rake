@@ -1,9 +1,9 @@
 # require 'mkmf'
 
-MRuby::Gem::Specification.new('mruby-bin-scite') do |spec|
+MRuby::Gem::Specification.new('mruby-bin-scite-mruby') do |spec|
   spec.license = ['Historical Permission Notice and Disclaimer (SciTE)', 'MIT License (ExtMan)']
   spec.authors = ['Takashi Sawanaka']
-  spec.description = "SciTE-based text editor with mruby scripting extension"
+  spec.description = "A SciTE-based text editor with mruby scripting extension"
   spec.homepage = 'https://github.com/sdottaka/mruby-bin-scite-mruby'
   
 #  spec.bins = %w(scite)
@@ -14,9 +14,9 @@ MRuby::Gem::Specification.new('mruby-bin-scite') do |spec|
   installpath = exefile("#{MRUBY_ROOT}/bin/scite")
   unless ENV['OS'] == 'Windows_NT'
     gtkversion = "gtk+-2.0"
-    prefix =`pkg-config --variable=prefix "#{gtkversion}" 2>/dev/null`.chomp
-    datadir = "#{prefix}/share"
-    pixmapdir = "#{datadir}/pixmaps"
+    #prefix =`pkg-config --variable=prefix "#{gtkversion}" 2>/dev/null`.chomp
+    prefix = ENV["SCITE_MRUBY_PREFIX"] || "#{MRUBY_ROOT}"
+    pixmapdir = "#{prefix}/share/pixmaps"
     sysconf_path = "#{prefix}/share/scite"
     gtk_flags = `pkg-config --cflags "#{gtkversion}"`.chomp
   end
@@ -28,6 +28,12 @@ MRuby::Gem::Specification.new('mruby-bin-scite') do |spec|
     file installpath => exepath do |t|
       FileUtils.rm_f t.name, { :verbose => $verbose }
       FileUtils.cp t.prerequisites.first, t.name, { :verbose => $verbose }
+      unless ENV['OS'] == 'Windows_NT'
+        FileUtils.mkdir_p sysconf_path
+        Dir.glob(["#{dir}/tools/scite/src/*.properties", "#{dir}/tools/scite/doc/*.html", "#{dir}/tools/scite/doc/SciTEIcon.png", "#{dir}/doc/PrintHi.png"]) do |file|
+          FileUtils.cp file, sysconf_path, {:verbose => true}
+        end
+      end
     end
   end
   
