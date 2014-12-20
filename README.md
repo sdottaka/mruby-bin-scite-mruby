@@ -32,7 +32,7 @@ MRuby::Build.new do |conf|
 
   # ... (snip) ...
 
-  conf.gem 'mruby-eval'
+  conf.gem :core => 'mruby-eval'
   conf.gem :git => 'https://github.com/iij/mruby-io.git'
   conf.gem :git => 'https://github.com/iij/mruby-dir.git'
   conf.gem :git => 'https://github.com/iij/mruby-regexp-pcre.git' # or conf.gem :git => 'https://github.com/mattn/mruby-onig-regexp.git'
