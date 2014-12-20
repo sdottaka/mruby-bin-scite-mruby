@@ -604,6 +604,27 @@ SString SciTEBase::GetFileNameProperty(const char *name) {
 	}
 }
 
+#ifdef _WIN32
+extern "C" int __stdcall GetACP();
+
+static int GetCharacterSetFromCodePage(int codePage) {
+	switch (codePage) {
+	case 1252: return SC_CHARSET_DEFAULT;
+	case 1251: return SC_CHARSET_RUSSIAN;
+	case 1250: return SC_CHARSET_EASTEUROPE;
+	case 1253: return SC_CHARSET_GREEK;
+	case 1254: return SC_CHARSET_TURKISH;
+	case 1255: return SC_CHARSET_HEBREW;
+	case 932:  return SC_CHARSET_SHIFTJIS;
+	case 949:  return SC_CHARSET_HANGUL;
+	case 936:  return SC_CHARSET_GB2312;
+	case 950:  return SC_CHARSET_CHINESEBIG5;
+	default:   return SC_CHARSET_DEFAULT;
+	}
+}
+
+#endif
+
 void SciTEBase::ReadProperties() {
 	if (extender)
 		extender->Clear();
@@ -689,6 +710,12 @@ void SciTEBase::ReadProperties() {
 	wOutput.Call(SCI_SETTECHNOLOGY, tech);
 
 	codePage = props.GetInt("code.page");
+#ifdef _WIN32
+	if (codePage == 0) {
+		codePage = GetACP();
+		props.SetInteger("code.page", codePage);
+	}
+#endif
 	if (CurrentBuffer()->unicodeMode != uni8Bit) {
 		// Override properties file to ensure Unicode displayed.
 		codePage = SC_CP_UTF8;
@@ -697,7 +724,13 @@ void SciTEBase::ReadProperties() {
 	int outputCodePage = props.GetInt("output.code.page", codePage);
 	wOutput.Call(SCI_SETCODEPAGE, outputCodePage);
 
-	characterSet = props.GetInt("character.set", SC_CHARSET_DEFAULT);
+	characterSet = props.GetInt("character.set", 
+#ifdef _WIN32
+		GetCharacterSetFromCodePage(codePage)
+#else
+		SC_CHARSET_DEFAULT
+#endif
+		);
 
 #ifdef __unix__
 	SString localeCType = props.Get("LC_CTYPE");
