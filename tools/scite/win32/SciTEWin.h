@@ -395,6 +395,7 @@ public:
 	}
 
 	uptr_t GetInstance();
+	GUI::WindowID GetWindowID();
 	static void Register(HINSTANCE hInstance_);
 	static LRESULT PASCAL TWndProc(
 	    HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM lParam);

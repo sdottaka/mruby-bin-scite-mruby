@@ -4744,6 +4744,10 @@ uptr_t SciTEBase::GetInstance() {
 	return 0;
 }
 
+GUI::WindowID SciTEBase::GetWindowID() {
+	return 0;
+}
+
 void SciTEBase::ShutDown() {
 	QuitProgram();
 }

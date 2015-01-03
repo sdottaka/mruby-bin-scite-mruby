@@ -243,6 +243,10 @@ uptr_t SciTEWin::GetInstance() {
 	return reinterpret_cast<uptr_t>(hInstance);
 }
 
+GUI::WindowID SciTEWin::GetWindowID() {
+	return wSciTE.GetID();
+}
+
 void SciTEWin::Register(HINSTANCE hInstance_) {
 	const TCHAR resourceName[] = TEXT("SciTE");
 
