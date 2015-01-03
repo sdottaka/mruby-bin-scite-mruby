@@ -63,10 +63,12 @@ extern "C" {
 #define M_SCITE mrb_module_get(mrb, "SciTE")
 
 static void pmo_free(mrb_state *mrb, void *ptr);
+static void subprocess_free(mrb_state *mrb, void *ptr);
 static mrb_data_type mrb_sc_type  = { "SciTEStylingContext", mrb_free };
 static mrb_data_type mrb_pmo_type = { "SciTEPaneMatchObject", pmo_free };
 static mrb_data_type mrb_po_type  = { "SciTEPane", mrb_free };
 static mrb_data_type mrb_ipb_type = { "SciTEIFacePropertyBinding", mrb_free };
+static mrb_data_type mrb_subprocess_type = { "SciTESubprocess", subprocess_free };
 
 static ExtensionAPI *host = 0;
 static mrb_state *mrbState = 0;
@@ -106,6 +108,7 @@ static mrb_value create_pane_object(mrb_state *mrb, ExtensionAPI::Pane p);
 static mrb_value iface_function_helper(mrb_state *mrb, ExtensionAPI::Pane pane, const IFaceFunction &func, mrb_int argc, mrb_value *argv);
 static mrb_value cf_pane_metatable_newindex(mrb_state *mrb, mrb_value self, const char *name, mrb_value val);
 static void stylingcontext_init(mrb_state *mrb);
+static void backtrace(mrb_state *mrb, const char *error = NULL);
 
 inline bool IFaceTypeIsScriptable(IFaceType t, int index) {
 	return t < iface_stringresult || (index==1 && t == iface_stringresult);
@@ -1036,6 +1039,514 @@ static mrb_value cf_global_metatable_index(mrb_state *mrb, mrb_value self) {
 	return mrb_nil_value(); // global namespace access should not raise errors
 }
 
+#ifdef _WIN32
+
+#include <windows.h>
+#include <process.h>
+
+static WNDPROC org_wndproc;
+static HWND hwndSciTE;
+
+#else
+
+#include <glib.h>
+#include <gdk/gdk.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/select.h>
+#include <fcntl.h>
+#include <unistd.h>
+#if defined(__linux)
+#include <pty.h>
+#elif defined(__APPLE__) || defined(__NetBSD__) || defined(__OpenBSD__)
+#include <util.h>
+#elif defined(__FreeBSD__)
+#include <libutil.h>
+#endif
+
+static void subprocess_reapchild(GPid pid, gint status, gpointer user_data);
+
+#endif
+
+struct Subprocess {
+#ifdef _WIN32
+	PROCESS_INFORMATION pi;
+	HANDLE hPipeRead;
+#else
+	GPid pid;
+	guint inputHandle;
+	int fd_pty_master;
+	GIOChannel *inputChannel;
+#endif
+	int exitcode;
+	mrb_state *mrb;
+	mrb_value self;
+	bool exited;
+};
+
+#ifdef _WIN32
+static unsigned __stdcall
+subprocess_read_output_thread(void *p)
+{
+	Subprocess *psp = static_cast<Subprocess *>(p);
+	for (;;) {
+		DWORD dwAvail;
+		BOOL bSucceeded = ::PeekNamedPipe(psp->hPipeRead, NULL, 0, NULL, &dwAvail, NULL);
+		if (!bSucceeded) {
+			::SendMessage(hwndSciTE, WM_USER + 2000, reinterpret_cast<WPARAM>(psp), 1);
+			break;
+		}
+		if (dwAvail > 0) {
+			::SendMessage(hwndSciTE, WM_USER + 2000, reinterpret_cast<WPARAM>(psp), 0);
+		} else {
+			Sleep(1);
+		}
+	}
+	return 0;
+}
+
+#endif
+
+static void
+subprocess_close_pipes(Subprocess *psp)
+{
+#ifdef _WIN32
+	if (psp->hPipeRead) {
+		::CloseHandle(psp->hPipeRead);
+	}
+	psp->hPipeRead = NULL;
+#else
+	if (psp->inputChannel) {
+		g_source_remove(psp->inputHandle);
+		g_io_channel_unref(psp->inputChannel);
+	}
+	if (psp->fd_pty_master != -1) {
+		close(psp->fd_pty_master);
+	}
+	psp->inputChannel = NULL;
+	psp->inputHandle = 0;
+	psp->fd_pty_master = -1;
+#endif
+}
+
+static void
+subprocess_close_process_handle(Subprocess *psp)
+{
+#ifdef _WIN32
+	if (psp->pi.hProcess) {
+		::CloseHandle(psp->pi.hProcess);
+		::CloseHandle(psp->pi.hThread);
+	}
+	psp->pi.hProcess = NULL;
+	psp->pi.hThread = NULL;
+#else
+	if (!psp->exited)
+		g_spawn_close_pid(psp->pid);
+#endif
+}
+
+static bool
+subprocess_pipe_closed(Subprocess *psp)
+{
+#ifdef _WIN32
+	return (psp->hPipeRead) ? false : true;
+#else
+	return (psp->fd_pty_master == -1);
+#endif
+}
+
+static void
+subprocess_update_status(Subprocess *psp)
+{
+	if (psp->exited)
+		return;
+#ifdef _WIN32
+	if (::WaitForSingleObject(psp->pi.hProcess, 0) == WAIT_TIMEOUT)
+		return;
+	DWORD dwExitCode;
+	::GetExitCodeProcess(psp->pi.hProcess, &dwExitCode);
+	psp->exitcode = dwExitCode;
+#else
+	if (waitpid(psp->pid, &psp->exitcode, WNOHANG) == 0)
+		return;
+	subprocess_reapchild(psp->pid, WEXITSTATUS(psp->exitcode), psp);
+#endif
+	psp->exited = true;
+	subprocess_close_process_handle(psp);
+}
+
+#ifdef _WIN32
+
+static LRESULT CALLBACK
+subprocess_subclass_wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	if (msg == WM_USER + 2000) {
+		Subprocess *psp = reinterpret_cast<Subprocess *>(wParam);
+		mrb_state *mrb = psp->mrb;
+		mrb_value handler = mrb_iv_get(mrb, psp->self, mrb_intern_lit(mrb, "handler"));
+		mrb_value argv[2] = { psp->self, mrb_fixnum_value(static_cast<int>(lParam)) };
+		if (lParam == 1) {
+			if (psp->pi.hProcess)
+				::WaitForSingleObject(psp->pi.hProcess, INFINITE);
+			subprocess_update_status(psp);
+			if (!mrb_nil_p(handler)) {
+				mrb_yield_argv(mrb, handler, 2, argv);
+			}
+		} else {
+			if (psp->hPipeRead) {
+				DWORD dwAvail;
+				BOOL bSucceeded = ::PeekNamedPipe(psp->hPipeRead, NULL, 0, NULL, &dwAvail, NULL);
+				if (bSucceeded) {
+					if (dwAvail > 0 && !mrb_nil_p(handler)) {
+						mrb_yield_argv(mrb, handler, 2, argv);
+					}
+				} else {
+					subprocess_close_pipes(psp);
+				}
+			}
+		}
+		if (mrb->exc) {
+			backtrace(mrb, ">mruby: an error occured in SciTE::Subprocess event handler\n");
+			mrb->exc = NULL;
+		}
+	}
+	return CallWindowProc(org_wndproc, hwnd, msg, wParam, lParam);
+}
+
+#else
+
+static void
+subprocess_reapchild(GPid pid, gint status, gpointer user_data)
+{
+	Subprocess *psp = reinterpret_cast<Subprocess *>(user_data);
+
+	subprocess_close_process_handle(psp);
+
+	psp->exitcode = status;
+	psp->exited = true;
+
+	mrb_state *mrb = psp->mrb;
+	mrb_value handler = mrb_iv_get(mrb, psp->self, mrb_intern_lit(mrb, "handler"));
+	if (!mrb_nil_p(handler)) {
+		mrb_value argv[2] = { psp->self, mrb_fixnum_value(1) };
+		mrb_yield_argv(mrb, handler, 2, argv);
+		if (mrb->exc) {
+			backtrace(mrb, ">mruby: an error occured in SciTE::Subprocess event handler\n");
+			mrb->exc = NULL;
+		}
+	}
+}
+
+static gboolean
+subprocess_iosignal(GIOChannel *, GIOCondition, Subprocess *psp) 
+{
+#ifndef GDK_VERSION_3_6
+	gdk_threads_enter();
+#endif
+
+	mrb_state *mrb = psp->mrb;
+	mrb_value handler = mrb_iv_get(mrb, psp->self, mrb_intern_lit(mrb, "handler"));
+	if (!mrb_nil_p(handler)) {
+		mrb_value argv[2] = { psp->self, mrb_fixnum_value(0) };
+		mrb_yield_argv(mrb, handler, 2, argv);
+		if (mrb->exc) {
+			backtrace(mrb, ">mruby: an error occured in SciTE::Subprocess event handler\n");
+			mrb->exc = NULL;
+		}
+	}
+
+#ifndef GDK_VERSION_3_6
+	gdk_threads_leave();
+#endif
+	return TRUE;
+}
+
+#endif
+
+static bool
+subprocess_spawn(mrb_state *mrb, Subprocess *psp, mrb_int argc, mrb_value *argv)
+{
+#ifdef _WIN32
+	HWND hwndConsole = ::GetConsoleWindow();
+	if (!hwndConsole)
+		::AllocConsole();
+	::ShowWindow(::GetConsoleWindow(), SW_HIDE);
+	::SetForegroundWindow(hwndSciTE);
+
+	SECURITY_DESCRIPTOR sd;
+	::InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
+	::SetSecurityDescriptorDacl(&sd, TRUE, NULL, FALSE);
+
+	SECURITY_ATTRIBUTES sa = { 0 };
+	sa.lpSecurityDescriptor = &sd;
+	sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+	sa.bInheritHandle = TRUE;
+	sa.lpSecurityDescriptor = NULL;
+
+	HANDLE hPipeWrite = NULL;
+	::CreatePipe(&psp->hPipeRead, &hPipeWrite, &sa, 0);
+
+	::SetHandleInformation(psp->hPipeRead, HANDLE_FLAG_INHERIT, 0);
+
+	STARTUPINFOW si = { 0 };
+	si.cb = sizeof(STARTUPINFO);
+	si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+	si.wShowWindow = SW_HIDE;
+	si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+	si.hStdOutput = hPipeWrite;
+	si.hStdError = hPipeWrite;
+
+	std::string path;
+	for (mrb_int i = 0; i < argc; ++i) {
+		path += mrb_string_value_cstr(mrb, &argv[i]);
+		if (i < argc - 1)
+			path += " ";
+	}
+
+	BOOL running = ::CreateProcessW(
+		NULL, const_cast<wchar_t *>(GUI::StringFromUTF8(path.c_str()).c_str()),
+		NULL, NULL, TRUE, CREATE_NEW_PROCESS_GROUP,
+		NULL, NULL, &si, &psp->pi);
+
+	::CloseHandle(hPipeWrite);
+
+	if (!running) {
+		::CloseHandle(psp->pi.hProcess);
+		::CloseHandle(psp->pi.hThread);
+		::CloseHandle(psp->hPipeRead);
+		return false;
+	}
+	return true;
+#else
+	std::vector<const char *> cargv(argc + 1);
+	for (mrb_int i = 0; i < argc; ++i) {
+		cargv[i] = mrb_string_value_cstr(mrb, &argv[i]);
+	}
+	cargv[argc] = NULL;
+
+	psp->pid = forkpty(&psp->fd_pty_master, NULL, NULL, NULL);
+	if (psp->pid == 0) {
+		execvp(cargv[0], const_cast<char * const *>(&cargv[0]));
+		_exit(EXIT_FAILURE);
+	}
+
+	mrb_value handler = mrb_iv_get(mrb, psp->self, mrb_intern_lit(mrb, "handler"));
+	if (!mrb_nil_p(handler)) {
+		g_child_watch_add(psp->pid, subprocess_reapchild, psp);
+		psp->inputChannel = g_io_channel_unix_new(psp->fd_pty_master);
+		g_io_channel_set_encoding(psp->inputChannel, NULL, NULL);
+		g_io_channel_set_buffered(psp->inputChannel, FALSE);
+		g_io_channel_set_flags(psp->inputChannel, 
+		    static_cast<GIOFlags>(g_io_channel_get_flags(psp->inputChannel) | G_IO_FLAG_NONBLOCK),
+		    NULL);
+		psp->inputHandle = g_io_add_watch(psp->inputChannel, G_IO_IN, (GIOFunc)subprocess_iosignal, psp);
+	}
+	return true;
+#endif
+}
+
+static void
+subprocess_free(mrb_state *mrb, void *ptr)
+{
+	if (ptr) {
+		Subprocess *psp = static_cast<Subprocess *>(ptr);
+		if (!psp->exited) {
+#ifdef _WIN32
+			::TerminateProcess(psp->pi.hProcess, 1);
+			::WaitForSingleObject(psp->pi.hProcess, INFINITE);
+#else
+			kill(psp->pid, SIGKILL);
+#endif
+			subprocess_close_process_handle(psp);
+			subprocess_close_pipes(psp);
+		}
+		mrb_free(mrb, ptr);
+	}
+}
+
+static mrb_value
+mrb_subprocess_initialize(mrb_state *mrb, mrb_value self)
+{
+	Subprocess *psp = static_cast<Subprocess*>(DATA_PTR(self));
+	if (psp)
+		subprocess_free(mrb, psp);
+
+	mrb_data_init(self, NULL, &mrb_subprocess_type);
+
+	mrb_int argc;
+	mrb_value *argv;
+	mrb_value blk = mrb_nil_value();
+	mrb_get_args(mrb, "*&", &argv, &argc, &blk);
+
+	psp = static_cast<Subprocess *>(mrb_malloc(mrb, sizeof(Subprocess)));
+	memset(psp, 0, sizeof(*psp));
+	psp->mrb = mrb;
+	psp->self = self;
+	mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "handler"), blk);
+
+#ifdef _WIN32
+	hwndSciTE = static_cast<HWND>(host->GetWindowID());
+#endif
+
+	if (!subprocess_spawn(mrb, psp, argc, argv)) {
+		mrb_free(mrb, psp);
+		mrb_raise(mrb, E_RUNTIME_ERROR, "cannnot create process process");
+	}
+
+	mrb_data_init(self, psp, &mrb_subprocess_type);
+
+#ifdef _WIN32
+	WNDPROC wndproc = reinterpret_cast<WNDPROC>(::GetWindowLongPtr(hwndSciTE, GWLP_WNDPROC));
+	if (wndproc != subprocess_subclass_wndproc) {
+		org_wndproc = wndproc;
+		::SetWindowLongPtr(hwndSciTE, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(subprocess_subclass_wndproc));
+	}
+
+	unsigned threadid;
+	HANDLE hThread = (HANDLE)_beginthreadex(NULL, 0, &subprocess_read_output_thread, psp, 0, &threadid);
+	CloseHandle(hThread);
+#endif
+
+	return self;
+}
+
+static mrb_value
+mrb_subprocess_pid(mrb_state * /* mrb */, mrb_value self)
+{
+	Subprocess *psp = static_cast<Subprocess*>(DATA_PTR(self));
+#ifdef _WIN32
+	return mrb_fixnum_value(psp->pi.dwProcessId);
+#else
+	return mrb_fixnum_value(psp->pid);
+#endif
+}
+
+#ifdef _WIN32
+BOOL WriteText(HANDLE hStdin, LPCSTR szText, size_t len)
+{
+	DWORD dwWritten;
+	INPUT_RECORD rec = { 0 };
+	for (size_t i = 0; i < len; ++i)
+	{
+		char ch = szText[i];
+		if (ch == 10)
+			ch = 13;
+		rec.EventType = KEY_EVENT;
+		rec.Event.KeyEvent.bKeyDown = TRUE;
+		rec.Event.KeyEvent.wRepeatCount = 1;
+		rec.Event.KeyEvent.uChar.UnicodeChar = ch;
+		WriteConsoleInput(hStdin, &rec, 1, &dwWritten);
+		rec.Event.KeyEvent.bKeyDown = FALSE;
+		WriteConsoleInput(hStdin, &rec, 1, &dwWritten);
+	}
+	return TRUE;
+}
+#endif
+
+static mrb_value
+mrb_subprocess_send(mrb_state *mrb, mrb_value self)
+{
+	Subprocess *psp = static_cast<Subprocess*>(DATA_PTR(self));
+	if (subprocess_pipe_closed(psp))
+		mrb_raise(mrb, E_RUNTIME_ERROR, "already closed");
+	char *str;
+	mrb_int len;
+	mrb_get_args(mrb, "s", &str, &len);
+#ifdef _WIN32
+	HANDLE hConsoleInput = ::GetStdHandle(STD_INPUT_HANDLE);
+	::WriteText(hConsoleInput, str, len);
+#else
+	(void)write(psp->fd_pty_master, str, len);
+#endif
+	return mrb_nil_value();
+}
+
+static mrb_value
+mrb_subprocess_recv(mrb_state *mrb, mrb_value self)
+{
+	char buffer[1024];
+	Subprocess *psp = static_cast<Subprocess*>(DATA_PTR(self));
+	if (subprocess_pipe_closed(psp))
+		mrb_raise(mrb, E_RUNTIME_ERROR, "already closed");
+#ifdef _WIN32
+	DWORD readbytes;
+	if (!ReadFile(psp->hPipeRead, buffer, sizeof(buffer), &readbytes, NULL)) {
+		return mrb_nil_value();
+	}
+#else
+	fd_set rfds;
+	FD_ZERO(&rfds);
+	FD_SET(psp->fd_pty_master, &rfds);
+	select(psp->fd_pty_master + 1, &rfds, NULL, NULL, NULL);
+	ssize_t readbytes = read(psp->fd_pty_master, buffer, sizeof(buffer));
+	if (readbytes <= 0) {
+		return mrb_nil_value();
+	}
+#endif
+	return mrb_str_new(mrb, buffer, static_cast<mrb_int>(readbytes));
+}
+
+static mrb_value
+mrb_subprocess_close(mrb_state * /* mrb */, mrb_value self)
+{
+	Subprocess *psp = static_cast<Subprocess*>(DATA_PTR(self));
+	subprocess_close_pipes(psp);
+	return mrb_nil_value();
+}
+
+static mrb_value
+mrb_subprocess_kill(mrb_state *mrb, mrb_value self)
+{
+	Subprocess *psp = static_cast<Subprocess*>(DATA_PTR(self));
+	if (psp->exited)
+		mrb_raise(mrb, E_RUNTIME_ERROR, "already exited");
+#ifdef _WIN32
+	TerminateProcess(psp->pi.hProcess, 1);
+#else
+	kill(psp->pid, SIGKILL);
+#endif
+	return mrb_nil_value();
+}
+
+static mrb_value
+mrb_subprocess_exited(mrb_state * /* mrb */, mrb_value self)
+{
+	Subprocess *psp = static_cast<Subprocess*>(DATA_PTR(self));
+	subprocess_update_status(psp);
+	if (psp->exited) {
+		return mrb_true_value();
+	} else {
+		return mrb_false_value();
+	}
+}
+
+static mrb_value
+mrb_subprocess_exitstatus(mrb_state *mrb, mrb_value self)
+{
+	if (!mrb_bool(mrb_subprocess_exited(mrb, self)))
+		return mrb_nil_value();
+	Subprocess *psp = static_cast<Subprocess*>(DATA_PTR(self));
+	return mrb_fixnum_value(psp->exitcode);
+}
+
+static void
+mrb_subprocess_class_init(mrb_state *mrb, RClass *scite)
+{
+	RClass *subprocess_class = mrb_define_class_under(mrb, scite, "Subprocess", mrb->object_class);
+	MRB_SET_INSTANCE_TT(subprocess_class, MRB_TT_DATA);
+	mrb_define_method(mrb, subprocess_class, "initialize", mrb_subprocess_initialize, MRB_ARGS_ANY() | MRB_ARGS_BLOCK());
+	mrb_define_method(mrb, subprocess_class, "pid", mrb_subprocess_pid, MRB_ARGS_NONE());
+	mrb_define_method(mrb, subprocess_class, "send", mrb_subprocess_send, MRB_ARGS_REQ(1));
+	mrb_define_method(mrb, subprocess_class, "recv", mrb_subprocess_recv, MRB_ARGS_NONE());
+	mrb_define_method(mrb, subprocess_class, "close", mrb_subprocess_close, MRB_ARGS_NONE());
+	mrb_define_method(mrb, subprocess_class, "kill", mrb_subprocess_kill, MRB_ARGS_OPT(1));
+	mrb_define_method(mrb, subprocess_class, "exited?", mrb_subprocess_exited, MRB_ARGS_NONE());
+	mrb_define_method(mrb, subprocess_class, "exitstatus", mrb_subprocess_exitstatus, MRB_ARGS_NONE());
+	mrb_define_const(mrb, subprocess_class, "EVENT_RECV", mrb_fixnum_value(0));
+	mrb_define_const(mrb, subprocess_class, "EVENT_EXIT", mrb_fixnum_value(1));
+}
+
 /*
 static mrb_value mrubyPanicFunction(mrb_state *mrb, mrb_value self) {
 	if (mrb == mrbState) {
@@ -1082,9 +1593,9 @@ static void PublishGlobalBufferData() {
 	}
 }
 
-static void backtrace(mrb_state *mrb)
+static void backtrace(mrb_state *mrb, const char *error)
 {
-	SString msg = ">mruby: error occurred while loading startup script\n>trace:\n";
+	SString msg = error ? error : ">mruby: error occurred while loading startup script\n>trace:\n";
 	mrb_value ary = mrb_exc_backtrace(mrb, mrb_obj_value(mrb->exc));
 	for (mrb_int i = 0; i < RARRAY_LEN(ary); ++i) {
 		msg += "\t";
@@ -1280,6 +1791,9 @@ static bool InitGlobalScope(bool checkProperties, bool forceReload = false) {
 	// Metatable for global namespace, to publish iface constants
 	mrb_define_module_function(mrbState, mrbState->object_class, "const_missing", cf_global_metatable_index, MRB_ARGS_REQ(1));
 	mrb_define_module_function(mrbState, scite, "const_missing", cf_global_metatable_index, MRB_ARGS_REQ(1));
+
+	// Subprocess class
+	mrb_subprocess_class_init(mrbState, scite);
 
 	// scite
 	mrb_value oscite = mrb_obj_value(scite);
@@ -1940,3 +2454,4 @@ bool mrubyExtension::OnClose(const char *filename) {
 bool mrubyExtension::OnUserStrip(int control, int change) {
 	return CallNamedFunction("on_strip", control, change);
 }
+

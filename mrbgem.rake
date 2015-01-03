@@ -101,6 +101,7 @@ MRuby::Gem::Specification.new('mruby-bin-scite-mruby') do |spec|
           gem_libraries += %w(ole32 oleaut32 advapi32 user32 gdi32 imm32 msimg32 comdlg32 comctl32 shell32 uuid uxtheme)
         else
           gem_libraries << 'm'
+          gem_libraries << 'util'
           gem_libraries << 'dl' if `uname -s` =~ /Linux|GNU/
           gem_flags_after_libraries << `pkg-config --libs #{gtkversion} gthread-2.0 gmodule-no-export-2.0`.chomp
         end
