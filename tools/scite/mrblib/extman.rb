@@ -18,6 +18,7 @@ module SciTE
   EVENT_OUTPUT_LINE = 14
   EVENT_OPEN_SWITCH = 15
   EVENT_USER_LIST_SELECTION = 16
+  EVENT_STRIP = 17
 
   @event_handlers = []
   @menu_idx = 10
@@ -142,6 +143,11 @@ module SciTE
     end
     def on_output_line(remove = false, &blk)
       add_event_handler EVENT_OUTPUT_LINE, remove, &blk
+    end
+    def strip_show(s, &blk)
+      @event_handlers[EVENT_STRIP] = []
+      add_event_handler EVENT_STRIP, false, &blk if blk
+      SciTE.strip_show_intern(s)
     end
 
     # the handler is always reset!
@@ -326,6 +332,10 @@ end
 def on_user_list_selection(tp, str)
   return onUserListSelection(tp, str) if respond_to?(:onUserListSelection)
   SciTE.dispatch_one SciTE.event_handlers[SciTE::EVENT_USER_LIST_SELECTION], str, tp
+end
+def on_strip(control, change)
+  return onStrip(file) if respond_to?(:onStrip)
+  SciTE.dispatch_one SciTE.event_handlers[SciTE::EVENT_STRIP], control, change
 end
 
 SciTE.load_scripts

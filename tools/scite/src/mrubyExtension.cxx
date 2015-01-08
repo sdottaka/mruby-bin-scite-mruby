@@ -1736,7 +1736,7 @@ static bool InitGlobalScope(bool checkProperties, bool forceReload = false) {
 	mrb_define_module_function(mrbState, scite, "open", cf_scite_open, MRB_ARGS_REQ(1));
 	mrb_define_module_function(mrbState, scite, "menu_command", cf_scite_menu_command, MRB_ARGS_REQ(1));
 	mrb_define_module_function(mrbState, scite, "update_status_bar", cf_scite_update_status_bar, MRB_ARGS_OPT(1));
-	mrb_define_module_function(mrbState, scite, "strip_show", cf_scite_strip_show, MRB_ARGS_REQ(1));
+	mrb_define_module_function(mrbState, scite, "strip_show_intern", cf_scite_strip_show, MRB_ARGS_REQ(1));
 	mrb_define_module_function(mrbState, scite, "strip_set", cf_scite_strip_set, MRB_ARGS_REQ(2));
 	mrb_define_module_function(mrbState, scite, "strip_set_list", cf_scite_strip_set_list, MRB_ARGS_REQ(2));
 	mrb_define_module_function(mrbState, scite, "strip_value", cf_scite_strip_value, MRB_ARGS_REQ(1));
